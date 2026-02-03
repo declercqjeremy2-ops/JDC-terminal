@@ -145,7 +145,7 @@
   transform: scale(1.1);
 }
 
-.favorite-btn:has(svg[fill]) {
+.favorite-btn svg[fill] {
   color: var(--accent-secondary);
 }
 
