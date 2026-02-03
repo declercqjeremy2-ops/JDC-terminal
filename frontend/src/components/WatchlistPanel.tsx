@@ -4,7 +4,7 @@ import { TrendingUp, TrendingDown, Plus, Star, StarOff } from 'lucide-react'
 import './WatchlistPanel.css'
 
 // API URL from environment variable
-const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'
+const API_URL = import.meta.env.VITE_API_URL || 'https://jdc-terminal-api.onrender.com'
 
 interface StockData {
   ticker: string
@@ -32,13 +32,18 @@ export default function WatchlistPanel({ selectedTicker, onSelectTicker }: Props
   const [loading, setLoading] = useState(true)
   const [favorites, setFavorites] = useState<Set<string>>(new Set(['AAPL', 'GOOGL']))
   
-  const defaultTickers = ['AAPL', 'GOOGL', 'MSFT', 'TSLA', 'NVDA', 'AMZN', 'META', 'NFLX']
+  // Tip: Houd je watchlist kort (bijv. 4-5 items) vanwege de gratis API limiet van Alpha Vantage
+  const defaultTickers = ['AAPL', 'GOOGL', 'MSFT', 'TSLA', 'NVDA']
 
   useEffect(() => {
     fetchStockData()
-    const interval = setInterval(fetchStockData, 15000)
+    // Interval op 30 seconden gezet om API limieten te sparen
+    const interval = setInterval(fetchStockData, 30000)
     return () => clearInterval(interval)
   }, [])
+
+  // Hulpfunctie om even te wachten tussen API calls (tegen rate-limiting)
+  const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
 
   const fetchStockData = async () => {
     setLoading(true)
@@ -46,7 +51,17 @@ export default function WatchlistPanel({ selectedTicker, onSelectTicker }: Props
     
     for (const ticker of defaultTickers) {
       try {
-        const response = await fetch(`${API_URL}/api/price/${ticker}`)
+        // BELANGRIJK: mode cors en credentials omit toegevoegd voor Safari
+        const response = await fetch(`${API_URL}/api/price/${ticker}`, {
+          method: 'GET',
+          mode: 'cors',
+          credentials: 'omit',
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json'
+          }
+        })
+        
         const json = await response.json()
         
         if (!json.error) {
@@ -65,6 +80,10 @@ export default function WatchlistPanel({ selectedTicker, onSelectTicker }: Props
             dividend: json.dividend || 0
           })
         }
+        
+        // Wacht 500ms tussen elke ticker om Alpha Vantage niet te overbelasten
+        await delay(500);
+
       } catch (error) {
         console.error(`Error fetching ${ticker}:`, error)
       }
@@ -88,20 +107,6 @@ export default function WatchlistPanel({ selectedTicker, onSelectTicker }: Props
     return names[ticker] || ticker
   }
 
-  const formatMarketCap = (value: number): string => {
-    if (value >= 1e12) return `$${(value / 1e12).toFixed(2)}T`
-    if (value >= 1e9) return `$${(value / 1e9).toFixed(2)}B`
-    if (value >= 1e6) return `$${(value / 1e6).toFixed(2)}M`
-    return `$${value.toFixed(0)}`
-  }
-
-  const formatVolume = (value: number): string => {
-    if (value >= 1e9) return `${(value / 1e9).toFixed(2)}B`
-    if (value >= 1e6) return `${(value / 1e6).toFixed(2)}M`
-    if (value >= 1e3) return `${(value / 1e3).toFixed(2)}K`
-    return value.toString()
-  }
-
   const toggleFavorite = (ticker: string, e: React.MouseEvent) => {
     e.stopPropagation()
     setFavorites(prev => {
@@ -115,11 +120,11 @@ export default function WatchlistPanel({ selectedTicker, onSelectTicker }: Props
     })
   }
 
-  if (loading) {
+  if (loading && stocks.length === 0) {
     return (
       <div className="watchlist-loading">
         <div className="loading-spinner"></div>
-        <p>Loading market data...</p>
+        <p>Connecting to Market Data...</p>
       </div>
     )
   }
@@ -128,7 +133,7 @@ export default function WatchlistPanel({ selectedTicker, onSelectTicker }: Props
     const aFav = favorites.has(a.ticker) ? 1 : 0
     const bFav = favorites.has(b.ticker) ? 1 : 0
     if (aFav !== bFav) return bFav - aFav
-    return b.marketCap - a.marketCap
+    return b.price - a.price // Sorteren op prijs bij gebrek aan marketcap in Alpha Vantage
   })
 
   return (
@@ -181,16 +186,19 @@ export default function WatchlistPanel({ selectedTicker, onSelectTicker }: Props
 
             <div className="stock-metrics">
               <div className="metric">
-                <span className="metric-label">Day</span>
-                <span className="metric-value">{stock.dayLow.toFixed(2)} - {stock.dayHigh.toFixed(2)}</span>
+                <span className="metric-label">High</span>
+                <span className="metric-value">${stock.dayHigh.toFixed(2)}</span>
               </div>
               <div className="metric">
-                <span className="metric-label">52W</span>
-                <span className="metric-value">{stock.fiftyTwoWeekLow.toFixed(2)} - {stock.fiftyTwoWeekHigh.toFixed(2)}</span>
+                <span className="metric-label">Low</span>
+                <span className="metric-value">${stock.dayLow.toFixed(2)}</span>
               </div>
             </div>
           </div>
         ))}
+        {stocks.length === 0 && !loading && (
+          <div className="no-data">No data available. Check API limits.</div>
+        )}
       </div>
     </div>
   )
