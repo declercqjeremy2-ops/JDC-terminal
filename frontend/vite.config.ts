@@ -5,8 +5,8 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   plugins: [react()],
   build: {
-    // We gebruiken de standaard minifyer in plaats van lightningcss 
-    // om die vage syntax errors te voorkomen
-    cssMinify: 'esbuild' 
+    // We zetten CSS minification volledig uit. 
+    // Dit voorkomt dat de builder struikelt over vage syntax foutjes.
+    cssMinify: false 
   }
 })
