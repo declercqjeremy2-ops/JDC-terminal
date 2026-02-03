@@ -8,25 +8,28 @@ import os
 
 app = FastAPI(title="JDC-Terminal API")
 
-# Environment detection
+# Environment detection (Render vult deze in)
 ENVIRONMENT = os.getenv("ENVIRONMENT", "development")
 
-# CORS origins based on environment
+# CORS origins configuratie
 if ENVIRONMENT == "production":
     origins = [
         "https://jdc-terminal.vercel.app",
-        "https://*.vercel.app",  # Allows preview deployments
+        "https://jdc-terminal-api.onrender.com",
+        # Voeg hier eventueel je custom domein toe als je die hebt
     ]
 else:
     origins = [
         "http://localhost:5173",
-        "http://localhost:5174",
+        "http://127.0.0.1:5173",
         "http://localhost:3000",
     ]
 
 app.add_middleware(
     CORSMiddleware,
+    # We gebruiken allow_origin_regex voor Vercel preview deploys
     allow_origins=origins,
+    allow_origin_regex="https://jdc-terminal-.*\.vercel\.app", 
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -50,7 +53,7 @@ def get_price(ticker: str):
         
         return {
             "ticker": ticker.upper(),
-            "price": info.get("currentPrice", 0),
+            "price": info.get("currentPrice", info.get("regularMarketPrice", 0)),
             "change": info.get("regularMarketChangePercent", 0),
             "dayHigh": info.get("dayHigh", 0),
             "dayLow": info.get("dayLow", 0),
@@ -109,17 +112,16 @@ def get_profile(ticker: str):
 
 @app.get("/api/news/{ticker}")
 def get_news(ticker: str, limit: int = 5):
-    """Recent news for a ticker. Uses yfinance if available, otherwise returns mock items."""
+    """Recent news for a ticker"""
     try:
         stock = yf.Ticker(ticker)
         news_items = []
 
-        # Try to fetch news from yfinance
         try:
             if hasattr(stock, 'news') and stock.news:
                 for item in stock.news[:limit]:
                     title = item.get('title') or item.get('headline') or ''
-                    if title:  # Only include if title exists
+                    if title:
                         news_items.append({
                             "title": title,
                             "provider": item.get('publisher') or item.get('provider') or 'News',
@@ -130,15 +132,11 @@ def get_news(ticker: str, limit: int = 5):
         except Exception:
             pass
 
-        # Fallback: mock news if none available
         if len(news_items) < limit:
             now = datetime.utcnow().isoformat()
             mock_news = [
-                {"title": f"{ticker.upper()} posts solid quarter results","provider":"MarketNews","link":"","summary":"Company exceeded analyst expectations this quarter with strong revenue growth.","datetime": now},
-                {"title": f"Analysts upgrade {ticker.upper()} price target","provider":"Research","link":"","summary":"Multiple analysts raised estimates following strong earnings report and positive guidance.","datetime": now},
-                {"title": f"{ticker.upper()} announces new product line","provider":"Press Release","link":"","summary":"Company unveils innovative product to expand market presence in key segments.","datetime": now},
-                {"title": f"Strategic partnership announced for {ticker.upper()}","provider":"Corporate","link":"","summary":"New collaboration expected to drive growth and enhance competitive positioning.","datetime": now},
-                {"title": f"{ticker.upper()} stock reaches new 52-week high","provider":"Market","link":"","summary":"Equity continues strong uptrend on positive investor sentiment and earnings momentum.","datetime": now}
+                {"title": f"{ticker.upper()} posts solid quarter results","provider":"MarketNews","link":"","summary":"Company exceeded analyst expectations.","datetime": now},
+                {"title": f"Analysts upgrade {ticker.upper()}","provider":"Research","link":"","summary":"Positive guidance drives upgrades.","datetime": now}
             ]
             news_items.extend(mock_news[:(limit - len(news_items))])
 
@@ -150,20 +148,25 @@ def get_news(ticker: str, limit: int = 5):
 async def websocket_endpoint(websocket: WebSocket):
     """Live price updates via WebSocket"""
     await websocket.accept()
-    tickers = ["AAPL", "GOOGL", "MSFT"]
+    # In een echte app zouden we de tickers van de client ontvangen
+    tickers = ["AAPL", "GOOGL", "MSFT", "TSLA", "NVDA"]
     
     try:
         while True:
             prices = {}
             for ticker in tickers:
-                stock = yf.Ticker(ticker)
-                info = stock.info
-                prices[ticker] = {
-                    "price": info.get("currentPrice", 0),
-                    "change": info.get("regularMarketChangePercent", 0)
-                }
+                try:
+                    stock = yf.Ticker(ticker)
+                    # We gebruiken fast_info voor snelheid in websockets
+                    info = stock.fast_info 
+                    prices[ticker] = {
+                        "price": round(info.last_price, 2),
+                        "change": round(((info.last_price / info.previous_close) - 1) * 100, 2)
+                    }
+                except:
+                    continue
             
             await websocket.send_text(json.dumps(prices))
-            await asyncio.sleep(5)  # Update elke 5 seconden
+            await asyncio.sleep(10) # Iets minder agressief voor de gratis server
     except Exception as e:
         print(f"WebSocket error: {e}")
