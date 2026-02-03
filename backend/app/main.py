@@ -6,11 +6,9 @@ from datetime import datetime
 
 app = FastAPI(title="JDC-Terminal API")
 
-# API Key ophalen uit Environment Variables
 AV_API_KEY = os.getenv("ALPHA_VANTAGE_API_KEY")
 AV_BASE_URL = "https://www.alphavantage.co/query"
 
-# GEOPTIMALISEERDE CORS VOOR SAFARI
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -22,38 +20,17 @@ app.add_middleware(
 
 @app.get("/")
 def read_root():
-    return {
-        "status": "ok", 
-        "source": "Alpha Vantage API", 
-        "version": "1.0.3",
-        "timestamp": datetime.now().isoformat()
-    }
+    return {"status": "ok", "source": "Alpha Vantage API", "version": "1.0.4"}
 
 @app.get("/api/price/{ticker}")
 async def get_price(ticker: str):
-    """Haalt prijsinformatie op via Alpha Vantage"""
     try:
-        if not AV_API_KEY:
-            return {"error": "API Key ontbreekt in backend"}
-
-        params = {
-            "function": "GLOBAL_QUOTE",
-            "symbol": ticker.upper(),
-            "apikey": AV_API_KEY
-        }
-        
+        params = {"function": "GLOBAL_QUOTE", "symbol": ticker.upper(), "apikey": AV_API_KEY}
         async with httpx.AsyncClient(timeout=10.0) as client:
             response = await client.get(AV_BASE_URL, params=params)
             data = response.json()
-            
-            # Alpha Vantage limiet controle
-            if "Note" in data:
-                return {"error": "API limiet (5/min) bereikt", "ticker": ticker.upper()}
-                
             quote = data.get("Global Quote", {})
-            if not quote:
-                return {"error": "Ticker niet gevonden", "ticker": ticker.upper()}
-                
+            if not quote: return {"error": "Geen data", "ticker": ticker.upper()}
             return {
                 "ticker": ticker.upper(),
                 "price": float(quote.get("05. price", 0)),
@@ -64,37 +41,53 @@ async def get_price(ticker: str):
                 "timestamp": datetime.now().isoformat()
             }
     except Exception as e:
-        return {"error": str(e), "ticker": ticker.upper()}
+        return {"error": str(e)}
+
+# NIEUW: OHLC Endpoint voor de grafieken
+@app.get("/api/ohlc/{ticker}")
+async def get_ohlc(ticker: str):
+    try:
+        params = {
+            "function": "TIME_SERIES_DAILY",
+            "symbol": ticker.upper(),
+            "apikey": AV_API_KEY,
+            "outputsize": "compact"
+        }
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(AV_BASE_URL, params=params)
+            data = response.json()
+            
+            time_series = data.get("Time Series (Daily)", {})
+            if not time_series:
+                return {"error": "Geen historische data gevonden", "ticker": ticker.upper()}
+            
+            # Formateer data voor de frontend (Recharts/Chart.js)
+            formatted_data = []
+            for date, stats in list(time_series.items())[:30]: # Laatste 30 dagen
+                formatted_data.append({
+                    "date": date,
+                    "open": float(stats["1. open"]),
+                    "high": float(stats["2. high"]),
+                    "low": float(stats["3. low"]),
+                    "close": float(stats["4. close"]),
+                    "volume": int(stats["5. volume"])
+                })
+            
+            return {"ticker": ticker.upper(), "data": formatted_data[::-1]} # Omgekeerd voor chronologische volgorde
+    except Exception as e:
+        return {"error": str(e)}
 
 @app.get("/api/news/{ticker}")
 async def get_news(ticker: str):
-    """Haalt nieuws op via Alpha Vantage"""
     try:
-        if not AV_API_KEY:
-            return {"error": "API Key ontbreekt"}
-
-        params = {
-            "function": "NEWS_SENTIMENT",
-            "tickers": ticker.upper(),
-            "apikey": AV_API_KEY,
-            "limit": 5
-        }
-        
+        params = {"function": "NEWS_SENTIMENT", "tickers": ticker.upper(), "apikey": AV_API_KEY, "limit": 5}
         async with httpx.AsyncClient(timeout=10.0) as client:
             response = await client.get(AV_BASE_URL, params=params)
             data = response.json()
             feed = data.get("feed", [])
-            
             return {
                 "ticker": ticker.upper(),
-                "news": [
-                    {
-                        "title": item.get("title"),
-                        "provider": item.get("source"),
-                        "link": item.get("url"),
-                        "datetime": item.get("time_published")
-                    } for item in feed[:5]
-                ]
+                "news": [{"title": i.get("title"), "provider": i.get("source"), "link": i.get("url")} for i in feed]
             }
     except Exception as e:
-        return {"error": str(e), "ticker": ticker.upper()}
+        return {"error": str(e)}
