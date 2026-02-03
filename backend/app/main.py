@@ -1,148 +1,100 @@
-from fastapi import FastAPI, WebSocket
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-import yfinance as yf
-from datetime import datetime
-import asyncio
-import json
+import httpx
 import os
+from datetime import datetime
 
 app = FastAPI(title="JDC-Terminal API")
 
-# Environment detection (Render vult deze in via Dashboard)
-ENVIRONMENT = os.getenv("ENVIRONMENT", "development")
+# API Key ophalen uit Environment Variables
+AV_API_KEY = os.getenv("ALPHA_VANTAGE_API_KEY")
+AV_BASE_URL = "https://www.alphavantage.co/query"
 
-# CORS CONFIGURATIE - Geoptimaliseerd voor Safari & Vercel
+# GEOPTIMALISEERDE CORS VOOR SAFARI
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],           # Toestaan voor alle domeinen
-    allow_credentials=False,       # MOET False zijn als origins "*" is (fix voor Safari)
-    allow_methods=["*"],           # Alle methodes (GET, POST, etc.) toestaan
-    allow_headers=["*"],           # Alle headers toestaan
+    allow_origins=["*"],
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["*"],
+    expose_headers=["*"],
 )
 
 @app.get("/")
 def read_root():
     return {
-        "status": "ok",
-        "message": "JDC-Terminal API",
-        "version": "1.0.1",
-        "environment": ENVIRONMENT
+        "status": "ok", 
+        "source": "Alpha Vantage API", 
+        "version": "1.0.3",
+        "timestamp": datetime.now().isoformat()
     }
 
 @app.get("/api/price/{ticker}")
-def get_price(ticker: str):
-    """Huidige prijs en metrics van een ticker"""
+async def get_price(ticker: str):
+    """Haalt prijsinformatie op via Alpha Vantage"""
     try:
-        stock = yf.Ticker(ticker)
-        # Gebruik fast_info voor snelheid of info voor details
-        info = stock.info
-        
-        # Soms geeft currentPrice None, dan pakken we regularMarketPrice
-        current_price = info.get("currentPrice") or info.get("regularMarketPrice") or 0
-        
-        return {
-            "ticker": ticker.upper(),
-            "price": current_price,
-            "change": info.get("regularMarketChangePercent", 0),
-            "dayHigh": info.get("dayHigh", 0),
-            "dayLow": info.get("dayLow", 0),
-            "week52High": info.get("fiftyTwoWeekHigh", 0),
-            "week52Low": info.get("fiftyTwoWeekLow", 0),
-            "volume": info.get("volume", 0),
-            "marketCap": info.get("marketCap", 0),
-            "pe": info.get("trailingPE", 0),
-            "dividend": info.get("dividendRate", 0),
-            "timestamp": datetime.now().isoformat()
-        }
-    except Exception as e:
-        return {"error": str(e), "ticker": ticker.upper()}
+        if not AV_API_KEY:
+            return {"error": "API Key ontbreekt in backend"}
 
-@app.get("/api/ohlc/{ticker}")
-def get_ohlc(ticker: str, period: str = "1mo"):
-    """Historische OHLC data"""
-    try:
-        stock = yf.Ticker(ticker)
-        hist = stock.history(period=period)
-        
-        data = []
-        for index, row in hist.iterrows():
-            data.append({
-                "date": index.strftime("%Y-%m-%d"),
-                "open": round(row["Open"], 2),
-                "high": round(row["High"], 2),
-                "low": round(row["Low"], 2),
-                "close": round(row["Close"], 2),
-                "volume": int(row["Volume"])
-            })
-        
-        return {"ticker": ticker.upper(), "data": data}
-    except Exception as e:
-        return {"error": str(e)}
-
-@app.get("/api/profile/{ticker}")
-def get_profile(ticker: str):
-    """Company profile data"""
-    try:
-        stock = yf.Ticker(ticker)
-        info = stock.info
-        return {
-            "ticker": ticker.upper(),
-            "name": info.get("shortName") or info.get("longName") or ticker.upper(),
-            "summary": info.get("longBusinessSummary", ""),
-            "sector": info.get("sector"),
-            "industry": info.get("industry"),
-            "employees": info.get("fullTimeEmployees"),
-            "website": info.get("website")
+        params = {
+            "function": "GLOBAL_QUOTE",
+            "symbol": ticker.upper(),
+            "apikey": AV_API_KEY
         }
+        
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(AV_BASE_URL, params=params)
+            data = response.json()
+            
+            # Alpha Vantage limiet controle
+            if "Note" in data:
+                return {"error": "API limiet (5/min) bereikt", "ticker": ticker.upper()}
+                
+            quote = data.get("Global Quote", {})
+            if not quote:
+                return {"error": "Ticker niet gevonden", "ticker": ticker.upper()}
+                
+            return {
+                "ticker": ticker.upper(),
+                "price": float(quote.get("05. price", 0)),
+                "change": float(quote.get("10. change percent", "0").replace('%', '')),
+                "dayHigh": float(quote.get("03. high", 0)),
+                "dayLow": float(quote.get("04. low", 0)),
+                "volume": int(quote.get("06. volume", 0)),
+                "timestamp": datetime.now().isoformat()
+            }
     except Exception as e:
         return {"error": str(e), "ticker": ticker.upper()}
 
 @app.get("/api/news/{ticker}")
-def get_news(ticker: str, limit: int = 5):
-    """Recent news voor een ticker"""
+async def get_news(ticker: str):
+    """Haalt nieuws op via Alpha Vantage"""
     try:
-        stock = yf.Ticker(ticker)
-        news_items = []
+        if not AV_API_KEY:
+            return {"error": "API Key ontbreekt"}
 
-        try:
-            if hasattr(stock, 'news') and stock.news:
-                for item in stock.news[:limit]:
-                    news_items.append({
-                        "title": item.get('title', ''),
-                        "provider": item.get('publisher', 'News'),
-                        "link": item.get('link', ''),
-                        "datetime": item.get('providerPublishTime', None)
-                    })
-        except:
-            pass
-
-        # Fallback als yfinance geen nieuws geeft
-        if not news_items:
-            news_items = [{"title": f"Update over {ticker.upper()}", "provider": "System", "link": "#", "datetime": None}]
-
-        return {"ticker": ticker.upper(), "news": news_items}
-    except Exception as e:
-        return {"error": str(e)}
-
-@app.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket):
-    """Live price updates via WebSocket"""
-    await websocket.accept()
-    tickers = ["AAPL", "GOOGL", "MSFT", "TSLA", "NVDA"]
-    
-    try:
-        while True:
-            prices = {}
-            for ticker in tickers:
-                try:
-                    stock = yf.Ticker(ticker)
-                    # Gebruik fast_info voor minder overhead op de server
-                    last_price = stock.fast_info.last_price
-                    prices[ticker] = {"price": round(last_price, 2)}
-                except:
-                    continue
+        params = {
+            "function": "NEWS_SENTIMENT",
+            "tickers": ticker.upper(),
+            "apikey": AV_API_KEY,
+            "limit": 5
+        }
+        
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(AV_BASE_URL, params=params)
+            data = response.json()
+            feed = data.get("feed", [])
             
-            await websocket.send_text(json.dumps(prices))
-            await asyncio.sleep(15) # 15 sec pauze om Render niet te overbelasten
+            return {
+                "ticker": ticker.upper(),
+                "news": [
+                    {
+                        "title": item.get("title"),
+                        "provider": item.get("source"),
+                        "link": item.get("url"),
+                        "datetime": item.get("time_published")
+                    } for item in feed[:5]
+                ]
+            }
     except Exception as e:
-        print(f"WebSocket error: {e}")
+        return {"error": str(e), "ticker": ticker.upper()}
