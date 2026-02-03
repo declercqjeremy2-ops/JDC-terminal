@@ -8,29 +8,16 @@ import os
 
 app = FastAPI(title="JDC-Terminal API")
 
-# Environment detection (Render vult deze in)
+# Environment detection (Render vult deze in via Dashboard)
 ENVIRONMENT = os.getenv("ENVIRONMENT", "development")
 
-# CORS origins configuratie
-if ENVIRONMENT == "production":
-    origins = [
-        "https://jdc-terminal.vercel.app",
-        "https://jdc-terminal-api.onrender.com",
-        # Voeg hier eventueel je custom domein toe als je die hebt
-    ]
-else:
-    origins = [
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        "http://localhost:3000",
-    ]
-
+# CORS CONFIGURATIE - Geoptimaliseerd voor Safari & Vercel
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Dit staat ELKE website toe om je API te gebruiken
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=["*"],           # Toestaan voor alle domeinen
+    allow_credentials=False,       # MOET False zijn als origins "*" is (fix voor Safari)
+    allow_methods=["*"],           # Alle methodes (GET, POST, etc.) toestaan
+    allow_headers=["*"],           # Alle headers toestaan
 )
 
 @app.get("/")
@@ -38,7 +25,7 @@ def read_root():
     return {
         "status": "ok",
         "message": "JDC-Terminal API",
-        "version": "1.0.0",
+        "version": "1.0.1",
         "environment": ENVIRONMENT
     }
 
@@ -47,11 +34,15 @@ def get_price(ticker: str):
     """Huidige prijs en metrics van een ticker"""
     try:
         stock = yf.Ticker(ticker)
+        # Gebruik fast_info voor snelheid of info voor details
         info = stock.info
+        
+        # Soms geeft currentPrice None, dan pakken we regularMarketPrice
+        current_price = info.get("currentPrice") or info.get("regularMarketPrice") or 0
         
         return {
             "ticker": ticker.upper(),
-            "price": info.get("currentPrice", info.get("regularMarketPrice", 0)),
+            "price": current_price,
             "change": info.get("regularMarketChangePercent", 0),
             "dayHigh": info.get("dayHigh", 0),
             "dayLow": info.get("dayLow", 0),
@@ -90,27 +81,25 @@ def get_ohlc(ticker: str, period: str = "1mo"):
 
 @app.get("/api/profile/{ticker}")
 def get_profile(ticker: str):
-    """Company profile and basic metadata for a ticker"""
+    """Company profile data"""
     try:
         stock = yf.Ticker(ticker)
         info = stock.info
-        profile = {
+        return {
             "ticker": ticker.upper(),
             "name": info.get("shortName") or info.get("longName") or ticker.upper(),
             "summary": info.get("longBusinessSummary", ""),
             "sector": info.get("sector"),
             "industry": info.get("industry"),
             "employees": info.get("fullTimeEmployees"),
-            "website": info.get("website"),
-            "logo": info.get("logo_url") or info.get("image") or None
+            "website": info.get("website")
         }
-        return profile
     except Exception as e:
         return {"error": str(e), "ticker": ticker.upper()}
 
 @app.get("/api/news/{ticker}")
 def get_news(ticker: str, limit: int = 5):
-    """Recent news for a ticker"""
+    """Recent news voor een ticker"""
     try:
         stock = yf.Ticker(ticker)
         news_items = []
@@ -118,35 +107,27 @@ def get_news(ticker: str, limit: int = 5):
         try:
             if hasattr(stock, 'news') and stock.news:
                 for item in stock.news[:limit]:
-                    title = item.get('title') or item.get('headline') or ''
-                    if title:
-                        news_items.append({
-                            "title": title,
-                            "provider": item.get('publisher') or item.get('provider') or 'News',
-                            "link": item.get('link') or item.get('url') or '',
-                            "summary": item.get('summary') or item.get('summary_text') or '',
-                            "datetime": item.get('providerPublishTime') or item.get('time') or None
-                        })
-        except Exception:
+                    news_items.append({
+                        "title": item.get('title', ''),
+                        "provider": item.get('publisher', 'News'),
+                        "link": item.get('link', ''),
+                        "datetime": item.get('providerPublishTime', None)
+                    })
+        except:
             pass
 
-        if len(news_items) < limit:
-            now = datetime.utcnow().isoformat()
-            mock_news = [
-                {"title": f"{ticker.upper()} posts solid quarter results","provider":"MarketNews","link":"","summary":"Company exceeded analyst expectations.","datetime": now},
-                {"title": f"Analysts upgrade {ticker.upper()}","provider":"Research","link":"","summary":"Positive guidance drives upgrades.","datetime": now}
-            ]
-            news_items.extend(mock_news[:(limit - len(news_items))])
+        # Fallback als yfinance geen nieuws geeft
+        if not news_items:
+            news_items = [{"title": f"Update over {ticker.upper()}", "provider": "System", "link": "#", "datetime": None}]
 
-        return {"ticker": ticker.upper(), "news": news_items[:limit]}
+        return {"ticker": ticker.upper(), "news": news_items}
     except Exception as e:
-        return {"error": str(e), "ticker": ticker.upper()}
+        return {"error": str(e)}
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     """Live price updates via WebSocket"""
     await websocket.accept()
-    # In een echte app zouden we de tickers van de client ontvangen
     tickers = ["AAPL", "GOOGL", "MSFT", "TSLA", "NVDA"]
     
     try:
@@ -155,16 +136,13 @@ async def websocket_endpoint(websocket: WebSocket):
             for ticker in tickers:
                 try:
                     stock = yf.Ticker(ticker)
-                    # We gebruiken fast_info voor snelheid in websockets
-                    info = stock.fast_info 
-                    prices[ticker] = {
-                        "price": round(info.last_price, 2),
-                        "change": round(((info.last_price / info.previous_close) - 1) * 100, 2)
-                    }
+                    # Gebruik fast_info voor minder overhead op de server
+                    last_price = stock.fast_info.last_price
+                    prices[ticker] = {"price": round(last_price, 2)}
                 except:
                     continue
             
             await websocket.send_text(json.dumps(prices))
-            await asyncio.sleep(10) # Iets minder agressief voor de gratis server
+            await asyncio.sleep(15) # 15 sec pauze om Render niet te overbelasten
     except Exception as e:
         print(f"WebSocket error: {e}")
