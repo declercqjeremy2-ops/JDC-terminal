@@ -4,7 +4,7 @@ import { TrendingUp, TrendingDown, Plus, Star, StarOff } from 'lucide-react'
 import './WatchlistPanel.css'
 
 // API URL from environment variable
-const API_URL = import.meta.env.VITE_API_URL || 'https://jdc-terminal-api.onrender.com'
+const API_URL = 'https://jdc-terminal-api.onrender.com'
 
 interface StockData {
   ticker: string
