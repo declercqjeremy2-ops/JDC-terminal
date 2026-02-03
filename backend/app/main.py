@@ -27,9 +27,7 @@ else:
 
 app.add_middleware(
     CORSMiddleware,
-    # We gebruiken allow_origin_regex voor Vercel preview deploys
-    allow_origins=origins,
-    allow_origin_regex="https://jdc-terminal-.*\.vercel\.app", 
+    allow_origins=["*"],  # Dit staat ELKE website toe om je API te gebruiken
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
