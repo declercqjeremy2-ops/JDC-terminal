@@ -4,13 +4,29 @@ import yfinance as yf
 from datetime import datetime
 import asyncio
 import json
+import os
 
 app = FastAPI(title="JDC-Terminal API")
 
-# CORS voor frontend
+# Environment detection
+ENVIRONMENT = os.getenv("ENVIRONMENT", "development")
+
+# CORS origins based on environment
+if ENVIRONMENT == "production":
+    origins = [
+        "https://jdc-terminal.vercel.app",
+        "https://*.vercel.app",  # Allows preview deployments
+    ]
+else:
+    origins = [
+        "http://localhost:5173",
+        "http://localhost:5174",
+        "http://localhost:3000",
+    ]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -18,7 +34,12 @@ app.add_middleware(
 
 @app.get("/")
 def read_root():
-    return {"message": "JDC-Terminal API is running", "version": "1.0.0"}
+    return {
+        "status": "ok",
+        "message": "JDC-Terminal API",
+        "version": "1.0.0",
+        "environment": ENVIRONMENT
+    }
 
 @app.get("/api/price/{ticker}")
 def get_price(ticker: str):
@@ -33,8 +54,8 @@ def get_price(ticker: str):
             "change": info.get("regularMarketChangePercent", 0),
             "dayHigh": info.get("dayHigh", 0),
             "dayLow": info.get("dayLow", 0),
-            "fiftyTwoWeekHigh": info.get("fiftyTwoWeekHigh", 0),
-            "fiftyTwoWeekLow": info.get("fiftyTwoWeekLow", 0),
+            "week52High": info.get("fiftyTwoWeekHigh", 0),
+            "week52Low": info.get("fiftyTwoWeekLow", 0),
             "volume": info.get("volume", 0),
             "marketCap": info.get("marketCap", 0),
             "pe": info.get("trailingPE", 0),
@@ -86,7 +107,6 @@ def get_profile(ticker: str):
     except Exception as e:
         return {"error": str(e), "ticker": ticker.upper()}
 
-
 @app.get("/api/news/{ticker}")
 def get_news(ticker: str, limit: int = 5):
     """Recent news for a ticker. Uses yfinance if available, otherwise returns mock items."""
@@ -125,7 +145,6 @@ def get_news(ticker: str, limit: int = 5):
         return {"ticker": ticker.upper(), "news": news_items[:limit]}
     except Exception as e:
         return {"error": str(e), "ticker": ticker.upper()}
-
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
