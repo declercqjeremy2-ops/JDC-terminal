@@ -3,6 +3,9 @@ import { useNavigate } from 'react-router-dom'
 import { TrendingUp, TrendingDown, Plus, Star, StarOff } from 'lucide-react'
 import './WatchlistPanel.css'
 
+// API URL from environment variable
+const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'
+
 interface StockData {
   ticker: string
   name: string
@@ -43,7 +46,7 @@ export default function WatchlistPanel({ selectedTicker, onSelectTicker }: Props
     
     for (const ticker of defaultTickers) {
       try {
-        const response = await fetch(`http://127.0.0.1:8000/api/price/${ticker}`)
+        const response = await fetch(`${API_URL}/api/price/${ticker}`)
         const json = await response.json()
         
         if (!json.error) {

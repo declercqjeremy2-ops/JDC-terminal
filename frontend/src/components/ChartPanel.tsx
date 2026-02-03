@@ -3,6 +3,9 @@ import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { TrendingUp, TrendingDown } from 'lucide-react'
 import './ChartPanel.css'
 
+// API URL from environment variable
+const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'
+
 interface OHLCData {
   date: string
   open: number
@@ -45,7 +48,7 @@ export default function ChartPanel({ ticker }: Props) {
   const fetchChart = async () => {
     setLoading(true)
     try {
-      const r = await fetch(`http://127.0.0.1:8000/api/ohlc/${ticker}?period=${period}`)
+      const r = await fetch(`${API_URL}/api/ohlc/${ticker}?period=${period}`)
       const j = await r.json()
       if (j.data) setData(j.data)
     } catch (e) {
@@ -56,7 +59,7 @@ export default function ChartPanel({ ticker }: Props) {
 
   const fetchPrice = async () => {
     try {
-      const r = await fetch(`http://127.0.0.1:8000/api/price/${ticker}`)
+      const r = await fetch(`${API_URL}/api/price/${ticker}`)
       const j = await r.json()
       if (!j.error) {
         setPrice(j.price || 0)
