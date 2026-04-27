@@ -21,8 +21,8 @@ function App() {
       <header className="terminal-header">
         <div className="header-left">
           <div className="header-title">
-            <h1>JDC-Terminal</h1>
-            <div className="header-tagline">Professional Financial Terminal</div>
+            <h1>OpenSource Bloomberg Terminal</h1>
+            <div className="header-tagline">Open Source Finance</div>
           </div>
         </div>
         <div className="header-right">

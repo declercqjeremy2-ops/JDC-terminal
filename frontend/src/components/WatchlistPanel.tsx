@@ -1,10 +1,9 @@
 import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { TrendingUp, TrendingDown, Plus, Star, StarOff } from 'lucide-react'
+import { ChevronDown, ChevronRight } from 'lucide-react'
 import './WatchlistPanel.css'
 
 // API URL from environment variable
-const API_URL = 'https://jdc-terminal-api.onrender.com'
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
 interface StockData {
   ticker: string
@@ -21,47 +20,64 @@ interface StockData {
   dividend: number
 }
 
+interface Category {
+  name: string
+  stocks: string[]
+}
+
 interface Props {
   selectedTicker: string
   onSelectTicker: (ticker: string) => void
 }
 
 export default function WatchlistPanel({ selectedTicker, onSelectTicker }: Props) {
-  const navigate = useNavigate()
   const [stocks, setStocks] = useState<StockData[]>([])
   const [loading, setLoading] = useState(true)
-  const [favorites, setFavorites] = useState<Set<string>>(new Set(['AAPL', 'GOOGL']))
+  const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set(['US Tech Giants']))
   
-  // Tip: Houd je watchlist kort (bijv. 4-5 items) vanwege de gratis API limiet van Alpha Vantage
-  const defaultTickers = ['AAPL', 'GOOGL', 'MSFT', 'TSLA', 'NVDA']
+  // Stock categories
+  const categories: Category[] = [
+    {
+      name: 'US Tech Giants',
+      stocks: ['AAPL', 'GOOGL', 'MSFT', 'TSLA', 'NVDA', 'AMZN', 'META', 'NFLX']
+    },
+    {
+      name: 'European Tech',
+      stocks: ['ASML.AS', 'NVO.CO', 'SAP.DE', 'ADYEN.AS', 'UBER.AS']
+    },
+    {
+      name: 'Belgian Stocks',
+      stocks: ['ABI.BR', 'KBC.BR', 'PROX.BR', 'ACKB.BR', 'UMI.BR']
+    },
+    {
+      name: 'Financials',
+      stocks: ['JPM', 'BAC', 'WFC', 'GS', 'MS']
+    },
+    {
+      name: 'Energy',
+      stocks: ['XOM', 'CVX', 'COP', 'EOG', 'SLB']
+    }
+  ]
 
   useEffect(() => {
     fetchStockData()
-    // Interval op 30 seconden gezet om API limieten te sparen
+    // Update every 30 seconds
     const interval = setInterval(fetchStockData, 30000)
     return () => clearInterval(interval)
   }, [])
 
-  // Hulpfunctie om even te wachten tussen API calls (tegen rate-limiting)
-  const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
+  const delay = (ms: number) => new Promise(res => setTimeout(res, ms))
 
   const fetchStockData = async () => {
     setLoading(true)
     const data: StockData[] = []
     
-    for (const ticker of defaultTickers) {
+    // Get all unique tickers from categories
+    const allTickers = Array.from(new Set(categories.flatMap(cat => cat.stocks)))
+    
+    for (const ticker of allTickers) {
       try {
-        // BELANGRIJK: mode cors en credentials omit toegevoegd voor Safari
-        const response = await fetch(`${API_URL}/api/price/${ticker}`, {
-          method: 'GET',
-          mode: 'cors',
-          credentials: 'omit',
-          headers: {
-            'Accept': 'application/json',
-            'Content-Type': 'application/json'
-          }
-        })
-        
+        const response = await fetch(`${API_URL}/api/price/${ticker}`)
         const json = await response.json()
         
         if (!json.error) {
@@ -81,8 +97,7 @@ export default function WatchlistPanel({ selectedTicker, onSelectTicker }: Props
           })
         }
         
-        // Wacht 500ms tussen elke ticker om Alpha Vantage niet te overbelasten
-        await delay(500);
+        await delay(200) // Rate limiting
 
       } catch (error) {
         console.error(`Error fetching ${ticker}:`, error)
@@ -91,6 +106,22 @@ export default function WatchlistPanel({ selectedTicker, onSelectTicker }: Props
     
     setStocks(data)
     setLoading(false)
+  }
+
+  const toggleCategory = (categoryName: string) => {
+    setExpandedCategories(prev => {
+      const newSet = new Set(prev)
+      if (newSet.has(categoryName)) {
+        newSet.delete(categoryName)
+      } else {
+        newSet.add(categoryName)
+      }
+      return newSet
+    })
+  }
+
+  const getStockData = (ticker: string): StockData | undefined => {
+    return stocks.find(stock => stock.ticker === ticker)
   }
 
   const getCompanyName = (ticker: string): string => {
@@ -102,103 +133,97 @@ export default function WatchlistPanel({ selectedTicker, onSelectTicker }: Props
       'NVDA': 'NVIDIA Corp.',
       'AMZN': 'Amazon.com Inc.',
       'META': 'Meta Platforms',
-      'NFLX': 'Netflix Inc.'
+      'NFLX': 'Netflix Inc.',
+      'ASML.AS': 'ASML Holding',
+      'ABI.BR': 'Anheuser-Busch InBev',
+      'NVO.CO': 'Novo Nordisk',
+      'SAP.DE': 'SAP SE',
+      'ADYEN.AS': 'Adyen',
+      'UBER.AS': 'Uber Technologies',
+      'KBC.BR': 'KBC Group',
+      'PROX.BR': 'Proximus',
+      'ACKB.BR': 'Ackermans & van Haaren',
+      'UMI.BR': 'Umicore',
+      'JPM': 'JPMorgan Chase',
+      'BAC': 'Bank of America',
+      'WFC': 'Wells Fargo',
+      'GS': 'Goldman Sachs',
+      'MS': 'Morgan Stanley',
+      'XOM': 'Exxon Mobil',
+      'CVX': 'Chevron',
+      'COP': 'ConocoPhillips',
+      'EOG': 'EOG Resources',
+      'SLB': 'Schlumberger'
     }
     return names[ticker] || ticker
-  }
-
-  const toggleFavorite = (ticker: string, e: React.MouseEvent) => {
-    e.stopPropagation()
-    setFavorites(prev => {
-      const newFavorites = new Set(prev)
-      if (newFavorites.has(ticker)) {
-        newFavorites.delete(ticker)
-      } else {
-        newFavorites.add(ticker)
-      }
-      return newFavorites
-    })
   }
 
   if (loading && stocks.length === 0) {
     return (
       <div className="watchlist-loading">
         <div className="loading-spinner"></div>
-        <p>Connecting to Market Data...</p>
+        <p>Loading Market Data...</p>
       </div>
     )
   }
 
-  const sortedStocks = [...stocks].sort((a, b) => {
-    const aFav = favorites.has(a.ticker) ? 1 : 0
-    const bFav = favorites.has(b.ticker) ? 1 : 0
-    if (aFav !== bFav) return bFav - aFav
-    return b.price - a.price // Sorteren op prijs bij gebrek aan marketcap in Alpha Vantage
-  })
-
   return (
     <div className="watchlist-container">
       <div className="watchlist-header">
-        <div className="watchlist-stats">
-          <span className="stat-label">Watching</span>
-          <span className="stat-value">{stocks.length}</span>
-        </div>
-        <button className="add-ticker-btn" title="Add ticker">
-          <Plus size={16} />
-        </button>
+        <h2 className="panel-title">Stock Categories</h2>
       </div>
-
-      <div className="stock-list">
-        {sortedStocks.map((stock) => (
-          <div
-            key={stock.ticker}
-            className={`stock-item ${selectedTicker === stock.ticker ? 'active' : ''}`}
-            onClick={() => {
-              onSelectTicker(stock.ticker)
-              navigate(`/stock/${stock.ticker}`)
-            }}
-          >
-            <div className="stock-header">
-              <div className="stock-info">
-                <div className="stock-ticker">{stock.ticker}</div>
-                <div className="stock-name">{stock.name}</div>
-              </div>
-              <button
-                className="favorite-btn"
-                onClick={(e) => toggleFavorite(stock.ticker, e)}
-                title={favorites.has(stock.ticker) ? 'Remove from favorites' : 'Add to favorites'}
-              >
-                {favorites.has(stock.ticker) ? (
-                  <Star size={16} fill="currentColor" />
-                ) : (
-                  <StarOff size={16} />
-                )}
-              </button>
+      
+      <div className="categories-list">
+        {categories.map(category => (
+          <div key={category.name} className="category-section">
+            <div 
+              className="category-header"
+              onClick={() => toggleCategory(category.name)}
+            >
+              {expandedCategories.has(category.name) ? 
+                <ChevronDown size={16} /> : 
+                <ChevronRight size={16} />
+              }
+              <span className="category-name">{category.name}</span>
+              <span className="category-count">({category.stocks.length})</span>
             </div>
-
-            <div className="stock-price-row">
-              <div className="stock-price">${stock.price.toFixed(2)}</div>
-              <div className={`stock-change ${stock.change >= 0 ? 'positive' : 'negative'}`}>
-                {stock.change >= 0 ? <TrendingUp size={14} /> : <TrendingDown size={14} />}
-                <span>{stock.change >= 0 ? '+' : ''}{stock.change.toFixed(2)}%</span>
+            
+            {expandedCategories.has(category.name) && (
+              <div className="category-stocks">
+                {category.stocks.map(ticker => {
+                  const stockData = getStockData(ticker)
+                  const isSelected = selectedTicker === ticker
+                  
+                  return (
+                    <div
+                      key={ticker}
+                      className={`stock-item ${isSelected ? 'selected' : ''}`}
+                      onClick={() => onSelectTicker(ticker)}
+                    >
+                      <div className="stock-info">
+                        <div className="stock-symbol">{ticker}</div>
+                        <div className="stock-name">{getCompanyName(ticker)}</div>
+                      </div>
+                      
+                      {stockData && (
+                        <div className="stock-price">
+                          <div className="price">${stockData.price.toFixed(2)}</div>
+                          <div className={`change ${stockData.change >= 0 ? 'positive' : 'negative'}`}>
+                            {stockData.change >= 0 ? '+' : ''}{stockData.change.toFixed(2)}%
+                          </div>
+                        </div>
+                      )}
+                      
+                      {!stockData && (
+                        <div className="stock-loading">Loading...</div>
+                      )}
+                    </div>
+                  )
+                })}
               </div>
-            </div>
-
-            <div className="stock-metrics">
-              <div className="metric">
-                <span className="metric-label">High</span>
-                <span className="metric-value">${stock.dayHigh.toFixed(2)}</span>
-              </div>
-              <div className="metric">
-                <span className="metric-label">Low</span>
-                <span className="metric-value">${stock.dayLow.toFixed(2)}</span>
-              </div>
-            </div>
+            )}
           </div>
         ))}
-        {stocks.length === 0 && !loading && (
-          <div className="no-data">No data available. Check API limits.</div>
-        )}
       </div>
     </div>
   )

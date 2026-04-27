@@ -2,6 +2,9 @@ import { useEffect, useState } from 'react'
 import { X } from 'lucide-react'
 import './StockDetail.css'
 
+// API URL from environment variable
+const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'
+
 interface Props {
   ticker: string
   onClose?: () => void
@@ -52,9 +55,9 @@ export default function StockDetail({ ticker, onClose }: Props) {
     setLoading(true)
     
     Promise.all([
-      fetch(`http://127.0.0.1:8000/api/price/${ticker}`).then(r => r.json()),
-      fetch(`http://127.0.0.1:8000/api/profile/${ticker}`).then(r => r.json()),
-      fetch(`http://127.0.0.1:8000/api/news/${ticker}?limit=5`).then(r => r.json())
+      fetch(`${API_URL}/api/price/${ticker}`).then(r => r.json()),
+      fetch(`${API_URL}/api/profile/${ticker}`).then(r => r.json()),
+      fetch(`${API_URL}/api/news/${ticker}?limit=5`).then(r => r.json())
     ])
       .then(([priceJson, profileJson, newsJson]) => {
         if (!mounted) return

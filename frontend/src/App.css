@@ -5,31 +5,31 @@
 
 :root {
   /* Backgrounds */
-  --bg-primary: #0a0a0a;
-  --bg-secondary: #111111;
-  --bg-tertiary: #1a1a1a;
-  --bg-elevated: #222222;
+  --bg-primary: #ffffff;
+  --bg-secondary: #f8f9fa;
+  --bg-tertiary: #e9ecef;
+  --bg-elevated: #ffffff;
   
   /* Brand */
-  --accent-primary: #00ff88;
-  --accent-secondary: #00d9ff;
+  --accent-primary: #007bff;
+  --accent-secondary: #28a745;
   
   /* Semantic */
-  --color-success: #00ff88;
-  --color-danger: #ff4444;
-  --color-warning: #ffbb33;
-  --color-info: #00d9ff;
+  --color-success: #28a745;
+  --color-danger: #dc3545;
+  --color-warning: #ffc107;
+  --color-info: #17a2b8;
   
   /* Text */
-  --text-primary: #ffffff;
-  --text-secondary: #e0e0e0;
-  --text-tertiary: #999999;
-  --text-disabled: #666666;
+  --text-primary: #212529;
+  --text-secondary: #495057;
+  --text-tertiary: #6c757d;
+  --text-disabled: #adb5bd;
   
   /* Borders */
-  --border-subtle: #222222;
-  --border-medium: #333333;
-  --border-accent: #00ff88;
+  --border-subtle: #dee2e6;
+  --border-medium: #ced4da;
+  --border-accent: #007bff;
   
   /* Spacing */
   --space-xs: 4px;
@@ -73,10 +73,9 @@ body {
 
 /* Header */
 .terminal-header {
-  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-  border-bottom: 2px solid var(--accent-primary);
-  padding: 1.5rem 2rem;
-  box-shadow: 0 4px 12px rgba(0, 255, 136, 0.1);
+  background: var(--bg-primary);
+  border-bottom: 1px solid var(--border-subtle);
+  padding: 1rem 2rem;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -91,12 +90,9 @@ body {
 }
 
 .header-title h1 {
-  font-size: 2rem;
-  font-weight: 700;
-  background: linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-secondary) 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: var(--text-primary);
   letter-spacing: -0.5px;
   margin: 0;
 }
