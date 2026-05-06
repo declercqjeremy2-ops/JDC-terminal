@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import httpx
 import os
 from datetime import datetime
+import yfinance as yf
 
 app = FastAPI(title="JDC-Terminal API")
 
@@ -33,28 +34,26 @@ def read_root():
 async def get_price(ticker: str):
     """Haalt de actuele prijs op"""
     try:
-        params = {
-            "function": "GLOBAL_QUOTE", 
-            "symbol": ticker.upper(), 
-            "apikey": AV_API_KEY
+        stock = yf.Ticker(ticker.upper())
+        info = stock.info
+        
+        if not info or 'regularMarketPrice' not in info:
+            return {"error": "Geen data gevonden", "ticker": ticker.upper()}
+        
+        # Bereken change percent
+        previous_close = info.get('previousClose', 0)
+        current_price = info.get('regularMarketPrice', 0)
+        change_percent = ((current_price - previous_close) / previous_close * 100) if previous_close else 0
+        
+        return {
+            "ticker": ticker.upper(),
+            "price": current_price,
+            "change": change_percent,
+            "dayHigh": info.get('dayHigh', 0),
+            "dayLow": info.get('dayLow', 0),
+            "volume": info.get('volume', 0),
+            "timestamp": datetime.now().isoformat()
         }
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            response = await client.get(AV_BASE_URL, params=params)
-            data = response.json()
-            quote = data.get("Global Quote", {})
-            
-            if not quote:
-                return {"error": "Geen data gevonden", "ticker": ticker.upper()}
-                
-            return {
-                "ticker": ticker.upper(),
-                "price": float(quote.get("05. price", 0)),
-                "change": float(quote.get("10. change percent", "0").replace('%', '')),
-                "dayHigh": float(quote.get("03. high", 0)),
-                "dayLow": float(quote.get("04. low", 0)),
-                "volume": int(quote.get("06. volume", 0)),
-                "timestamp": datetime.now().isoformat()
-            }
     except Exception as e:
         return {"error": str(e)}
 
@@ -62,59 +61,46 @@ async def get_price(ticker: str):
 async def get_ohlc(ticker: str):
     """Haalt historische data op voor de grafiek"""
     try:
-        params = {
-            "function": "TIME_SERIES_DAILY",
-            "symbol": ticker.upper(),
-            "apikey": AV_API_KEY,
-            "outputsize": "compact"
-        }
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            response = await client.get(AV_BASE_URL, params=params)
-            data = response.json()
-            time_series = data.get("Time Series (Daily)", {})
-            
-            if not time_series:
-                return {"error": "Geen historische data", "ticker": ticker.upper()}
-            
-            formatted_data = []
-            # Neem de laatste 30 dagen
-            for date, stats in list(time_series.items())[:30]:
-                formatted_data.append({
-                    "date": date,
-                    "open": float(stats["1. open"]),
-                    "high": float(stats["2. high"]),
-                    "low": float(stats["3. low"]),
-                    "close": float(stats["4. close"]),
-                    "volume": int(stats["5. volume"])
-                })
-            
-            return {"ticker": ticker.upper(), "data": formatted_data[::-1]}
+        stock = yf.Ticker(ticker.upper())
+        hist = stock.history(period="1mo")
+        
+        if hist.empty:
+            return {"error": "Geen historische data", "ticker": ticker.upper()}
+        
+        formatted_data = []
+        for date, row in hist.iterrows():
+            formatted_data.append({
+                "date": date.strftime("%Y-%m-%d"),
+                "open": float(row['Open']),
+                "high": float(row['High']),
+                "low": float(row['Low']),
+                "close": float(row['Close']),
+                "volume": int(row['Volume'])
+            })
+        
+        return {"ticker": ticker.upper(), "data": formatted_data}
     except Exception as e:
         return {"error": str(e)}
 
-@app.get("/api/news/{ticker}")
-async def get_news(ticker: str):
-    """Haalt nieuws sentiment op"""
+@app.get("/api/profile/{ticker}")
+async def get_profile(ticker: str):
+    """Haalt profiel informatie op"""
     try:
-        params = {
-            "function": "NEWS_SENTIMENT", 
-            "tickers": ticker.upper(), 
-            "apikey": AV_API_KEY, 
-            "limit": 5
+        stock = yf.Ticker(ticker.upper())
+        info = stock.info
+        
+        if not info:
+            return {"error": "Geen profiel data", "ticker": ticker.upper()}
+        
+        return {
+            "ticker": ticker.upper(),
+            "name": info.get('longName', ''),
+            "summary": info.get('longBusinessSummary', ''),
+            "sector": info.get('sector', ''),
+            "industry": info.get('industry', ''),
+            "employees": info.get('fullTimeEmployees', 0),
+            "website": info.get('website', ''),
+            "logo": info.get('logo_url', '')
         }
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            response = await client.get(AV_BASE_URL, params=params)
-            data = response.json()
-            feed = data.get("feed", [])
-            return {
-                "ticker": ticker.upper(),
-                "news": [
-                    {
-                        "title": item.get("title"), 
-                        "provider": item.get("source"), 
-                        "link": item.get("url")
-                    } for item in feed
-                ]
-            }
     except Exception as e:
         return {"error": str(e)}
