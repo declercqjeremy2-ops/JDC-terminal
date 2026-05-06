@@ -4,7 +4,7 @@ import { TrendingUp, TrendingDown } from 'lucide-react'
 import './ChartPanel.css'
 
 // API URL from environment variable
-const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'
+const API_URL = import.meta.env.VITE_API_URL || ''
 
 interface OHLCData {
   date: string

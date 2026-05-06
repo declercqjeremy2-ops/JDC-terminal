@@ -3,7 +3,7 @@ import { X } from 'lucide-react'
 import './StockDetail.css'
 
 // API URL from environment variable
-const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'
+const API_URL = import.meta.env.VITE_API_URL || ''
 
 interface Props {
   ticker: string
